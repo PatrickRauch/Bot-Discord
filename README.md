@@ -13,7 +13,7 @@ Este é um bot de Discord especializado em gerenciar clãs e fornecer funcionali
 
 1. Clone o repositório:
    ```
-   git clone https://github.com/PatrickRauch/BotDiscord.git
+   git clone https://github.com/PatrickRauch/Bot-Discord.git BotDiscord
    cd BotDiscord
    ```
 

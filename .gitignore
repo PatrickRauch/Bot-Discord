@@ -1,0 +1,22 @@
+# Ignorar arquivos de configuração
+config.json
+git_help.txt
+git_check_update.sh
+git_push.sh
+install_dependencies.py
+
+# Ignorar arquivos de log
+*.log
+config.json
+
+# Ignorar diretório de ambiente virtual
+venv/
+
+
+# Ignorar arquivos de cache Python
+__pycache__/
+*.pyc
+config.json
+
+# Ignorar arquivos temporários
+*.tmp

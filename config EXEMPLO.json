@@ -1,0 +1,40 @@
+{
+    "status": "Dayz",
+    "token": "",
+    "admin_ids": [1281097104240017488],
+    "prefix": "/",
+    "cor_embed": "#00ff00",
+    "canais": {
+        "boas_vindas": 1281097104240017488,
+        "logs": 1281096985193091082,
+        "cla_logs": 1231013369671323682
+    },
+    "cargos": {
+        "membro": 1281097187958456451,
+        "moderador": 1281097187958456451
+    },
+    "mensagens": {
+        "boas_vindas": "Bem-vindo ao servidor, {membro}!",
+        "despedida": "At\u00c3\u00a9 logo, {membro}. Esperamos v\u00c3\u00aa-lo novamente!"
+    },
+    "comandos_desativados": [
+        ""
+    ],
+    "cooldowns": {
+        "comando_diario": 86400,
+        "comando_spam": 10
+    },
+    "api_keys": {
+        "weather_api": "sua_chave_api_aqui",
+        "tradutor_api": "outra_chave_api_aqui"
+    },
+    "limite_avisos": 3,
+    "tempo_mute": 600,
+    "database": {
+        "host": "",
+        "port": 5432,
+        "nome": "",
+        "usuario": "",
+        "senha": ""
+    }
+}

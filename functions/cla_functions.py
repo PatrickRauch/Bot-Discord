@@ -219,7 +219,8 @@ class ClaCog(app_commands.Group):
                 await interaction.followup.send("Erro: Você não é membro de nenhum clã.")
                 return
 
-            cla_id, lider_id, nome_cla, tag_cla, membros_atuais, ult_atualizacao, id_modificou = cla_info[0]
+            # Desempacota os 8 valores retornados pela consulta
+            cla_id, lider_id, nome_cla, tag_cla, membros_atuais, ult_atualizacao, id_modificou, datas_modificacao = cla_info[0]
 
             # Processa a lista de membros
             novos_membros = re.findall(r'<@!?(\d+)>', membros)

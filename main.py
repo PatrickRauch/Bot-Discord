@@ -41,10 +41,16 @@ class BotClient(discord.Client):
         await self.wait_until_ready()  # Aguarda o bot estar totalmente pronto
         # Sincroniza os comandos se ainda não foram sincronizados
         if not self.synced:
-            await self.tree.sync()  # Sincroniza os comandos globalmente
-            await self.tree.sync(guild=discord.Object(id=ID_DO_SERVIDOR))  # Sincroniza os comandos para o servidor específico
-            self.synced = True  # Marca os comandos como sincronizados
-            print("Comandos sincronizados.")  # Imprime mensagem de confirmação
+            try:
+                await self.tree.sync(guild=discord.Object(id=ID_DO_SERVIDOR))  # Tenta sincronizar para o servidor específico
+                self.synced = True  # Marca os comandos como sincronizados
+                print("Comandos sincronizados para o servidor específico.")  # Imprime mensagem de confirmação
+            except discord.errors.Forbidden as e:
+                print(f"Erro ao sincronizar comandos: {e}")  # Registra o erro
+                print("Tentando sincronizar globalmente...")  # Imprime mensagem de tentativa de sincronização global
+                await self.tree.sync()  # Sincroniza globalmente
+                self.synced = True  # Marca os comandos como sincronizados
+                print("Comandos sincronizados globalmente.")  # Imprime mensagem de confirmação
 
         # Carrega a configuração e define o status do bot
         config = carregar_config()  # Carrega as configurações do bot

@@ -92,10 +92,19 @@ Este é um bot de Discord especializado em gerenciar clãs e fornecer funcionali
 - O criador do clã é automaticamente adicionado como líder e primeiro membro.
 - Não é possível remover o líder do clã através do comando de edição.
 - O bot mantém um registro de quem fez a última modificação no clã.
+- O bot agora suporta múltiplos servidores, permitindo gerenciamento de clãs em diferentes comunidades.
 
 ## Configuração e Desenvolvimento
 
 O bot utiliza um banco de dados PostgreSQL para armazenar informações sobre membros e clãs. Certifique-se de configurar corretamente o arquivo `config.json` com as credenciais do banco de dados e outras configurações necessárias.
+
+A estrutura do banco de dados foi atualizada para suportar múltiplos servidores. Certifique-se de executar as migrações mais recentes antes de iniciar o bot.
+
+## Atualizações Recentes
+
+- Implementado suporte para múltiplos servidores, permitindo que o bot gerencie clãs em diferentes servidores Discord.
+- Corrigidos e aprimorados comandos existentes para melhor funcionalidade e estabilidade.
+- Atualizada a estrutura do banco de dados para acomodar as novas funcionalidades.
 
 ## Contribuições
 

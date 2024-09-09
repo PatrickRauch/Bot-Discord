@@ -5,6 +5,7 @@ from database import query, add, edit  # Importa funções para interagir com o 
 import logging  # Importa o módulo de logging para registrar eventos
 import re  # Importa o módulo de expressões regulares
 from datetime import datetime  # Adicione esta importação no topo do arquivo
+import asyncio
 
 # Configura o logger para este módulo
 logger = logging.getLogger('bot')  # Cria um logger específico para o bot
@@ -20,31 +21,62 @@ class ClaCog(app_commands.Group):
     # Define o comando 'status' para mostrar o status do clã do usuário
     @app_commands.command(name="status", description="Mostra o status do seu clã")
     async def cla_status(self, interaction: discord.Interaction):
-        # Registra no log a solicitação de status
         logger.info(f"Solicitação de status de clã para o usuário {interaction.user.id}")
-        # Adia a resposta da interação para permitir processamento assíncrono
         await interaction.response.defer(ephemeral=True)
 
         try:
-            # Busca as informações do clã do membro
-            cla_info = self._buscar_cla_por_membro(str(interaction.user.id))
-            # Se o membro não está em nenhum clã, envia uma mensagem informando
-            if not cla_info:
+            # Busca todos os clãs do usuário
+            clas_do_usuario = self._buscar_clas_por_membro(str(interaction.user.id))
+            if not clas_do_usuario:
                 await interaction.followup.send("Você não está em nenhum clã.")
                 return
 
-            # Formata as informações do clã em uma mensagem
-            mensagem = self._formatar_cla_info(cla_info, interaction.guild)
-            # Envia a mensagem com as informações do clã
-            await interaction.followup.send(mensagem)
+            logger.info(f"Clãs encontrados para o usuário: {clas_do_usuario}")
+            logger.info(f"ID do servidor atual: {interaction.guild.id}")
+
+            # Verifica se o servidor já está cadastrado
+            servidor_id = interaction.guild.id
+            servidor_existente = query("servidores", "id", "discord_id = %s", (servidor_id,))
+            if not servidor_existente:
+                # Adiciona o servidor se ele não existir
+                novo_servidor_id = add("servidores", {"nome": interaction.guild.name, "discord_id": servidor_id})
+                if not novo_servidor_id:
+                    await interaction.followup.send("Erro: Não foi possível registrar o servidor.")
+                    return
+                servidor_id_atual = novo_servidor_id
+                logger.info(f"Novo servidor registrado com ID: {servidor_id_atual}")
+            else:
+                servidor_id_atual = servidor_existente[0][0]
+            
+            logger.info(f"ID do servidor atual no banco de dados: {servidor_id_atual}")
+
+            # Filtra os clãs ativos do servidor atual
+            clas_ativos_servidor = []
+            for cla in clas_do_usuario:
+                cla_id, lider_id, nome_cla, tag_cla, membros_ids, ult_atualizacao, id_modificou, servidor_id, ativo = cla
+                logger.info(f"Verificando clã: {nome_cla}, servidor_id: {servidor_id}, ativo: {ativo}")
+                if ativo and servidor_id == servidor_id_atual:
+                    clas_ativos_servidor.append(cla)
+                    logger.info(f"Clã adicionado: {nome_cla}")
+
+            if not clas_ativos_servidor:
+                await interaction.followup.send("Você não está em nenhum clã ativo neste servidor.")
+                return
+
+            if len(clas_ativos_servidor) > 1:
+                mensagem = "Você está em múltiplos clãs ativos neste servidor:\n\n"
+                for cla in clas_ativos_servidor:
+                    mensagem += self._formatar_cla_info(cla, interaction.guild) + "\n\n"
+                await interaction.followup.send(mensagem)
+            else:
+                mensagem = self._formatar_cla_info(clas_ativos_servidor[0], interaction.guild)
+                await interaction.followup.send(mensagem)
 
         except Exception as e:
-            # Em caso de erro, registra o erro no log e envia uma mensagem de erro
             logger.error(f"Erro ao buscar status do clã: {str(e)}", exc_info=True)
             await interaction.followup.send("Ocorreu um erro ao buscar as informações do clã.")
 
-    # Método privado para buscar o clã de um membro pelo seu ID do Discord
-    def _buscar_cla_por_membro(self, discord_id):
+    def _buscar_clas_por_membro(self, discord_id):
         membro_query = query("membros", "id", "discord_id = %s", (discord_id,))
         if not membro_query:
             return None
@@ -55,35 +87,30 @@ class ClaCog(app_commands.Group):
         if not cla_query:
             return None
 
-        return cla_query[0]
+        return cla_query
 
-    # Método privado para formatar as informações do clã em uma mensagem
     def _formatar_cla_info(self, cla_info, guild):
-        # Desempacotando os 8 valores retornados pela consulta
-        cla_id, lider_id, nome_cla, tag_cla, membros_ids, ult_atualizacao, ids_modificou, datas_modificacao = cla_info
+        cla_id, lider_id, nome_cla, tag_cla, membros_ids, ult_atualizacao, id_modificou, servidor_id, ativo = cla_info
 
-        # Busca o ID do Discord do líder
         lider_query = query("membros", "discord_id", "id = %s", (lider_id,))
         lider_discord_id = lider_query[0][0] if lider_query else "Desconhecido"
 
-        # Busca os IDs do Discord de todos os membros
         membros_query = query("membros", "discord_id", f"id = ANY(ARRAY{membros_ids})")
         membros_discord_ids = [membro[0] for membro in membros_query]
 
-        # Busca o ID do Discord do último usuário que modificou o clã
-        ultimo_modificador_id = ids_modificou[-1] if ids_modificou else None
+        ultimo_modificador_id = id_modificou[-1] if id_modificou and isinstance(id_modificou, list) else None
         ultimo_modificador_query = query("membros", "discord_id", "id = %s", (ultimo_modificador_id,)) if ultimo_modificador_id else None
         ultimo_modificador_discord_id = ultimo_modificador_query[0][0] if ultimo_modificador_query else "Desconhecido"
 
-        # Formata a mensagem com as informações do clã
         mensagem = f"**Nome do Clã:** {nome_cla}\n"
         mensagem += f"**TAG:** {tag_cla}\n"
         mensagem += f"**Líder:** <@{lider_discord_id}>\n"
+        mensagem += f"**Ativo:** {'Sim' if ativo else 'Não'}\n"
         mensagem += f"**Última Atualização:** {ult_atualizacao}\n"
         mensagem += f"**Última Modificação por:** <@{ultimo_modificador_discord_id}>\n"
+        mensagem += f"**Servidor ID:** {servidor_id}\n"
         mensagem += "**Membros:**\n"
 
-        # Adiciona cada membro à mensagem, usando menção se possível
         for discord_id in membros_discord_ids:
             membro = guild.get_member(int(discord_id))
             if membro:
@@ -93,30 +120,54 @@ class ClaCog(app_commands.Group):
 
         return mensagem
 
+    def _buscar_clas_por_membro(self, discord_id):
+        membro_query = query("membros", "id", "discord_id = %s", (discord_id,))
+        if not membro_query:
+            return None
+
+        membro_id = membro_query[0][0]
+
+        cla_query = query("cla", "*", "members_cla @> ARRAY[%s]", (membro_id,))
+        if not cla_query:
+            return None
+
+        return cla_query
+
     # Comando para criar um novo clã
     @app_commands.command(name="criar", description="Cria um novo clã")
     async def criar_cla(self, interaction: discord.Interaction, nome: str, tag: str, membros: str):
-        # Registra no log a solicitação de criação de clã
         logger.info(f"Solicitação de criação de clã para o usuário {interaction.user.id}")
-        # Adia a resposta da interação para permitir processamento assíncrono
         await interaction.response.defer(ephemeral=True)
 
         try:
-            # Verifica se o líder (criador) já está em um clã
-            lider_em_cla = query("cla", "id", "members_cla @> ARRAY[(SELECT id FROM membros WHERE discord_id = %s)]", (str(interaction.user.id),))
-            if lider_em_cla:
-                await interaction.followup.send("Erro: Você já está em um clã e não pode criar outro.")
+            # Verifica se o usuário já é membro de algum clã no servidor atual
+            usuario_em_cla = query("cla", "id", "members_cla @> ARRAY[(SELECT id FROM membros WHERE discord_id = %s)] AND servidor_id = %s", (str(interaction.user.id), interaction.guild.id))
+            if usuario_em_cla:
+                await interaction.followup.send("Erro: Você já é membro de um clã neste servidor e não pode criar ou participar de outro.")
                 return
 
             # Verifica se o nome do clã já existe
-            if query("cla", "id", "name_cla = %s", (nome,)):
-                await interaction.followup.send("Erro: Já existe um clã com esse nome.")
+            if query("cla", "id", "name_cla = %s AND servidor_id = %s", (nome, interaction.guild.id)):
+                await interaction.followup.send("Erro: Já existe um clã com esse nome neste servidor.")
                 return
 
             # Verifica se a TAG já existe
-            if query("cla", "id", "tag_cla = %s", (tag,)):
-                await interaction.followup.send("Erro: Já existe um clã com essa TAG.")
+            if query("cla", "id", "tag_cla = %s AND servidor_id = %s", (tag, interaction.guild.id)):
+                await interaction.followup.send("Erro: Já existe um clã com essa TAG neste servidor.")
                 return
+
+            # Verifica se o servidor já está cadastrado
+            servidor_id = interaction.guild.id
+            servidor_existente = query("servidores", "id", "discord_id = %s", (servidor_id,))
+            if not servidor_existente:
+                # Adiciona o servidor se ele não existir
+                novo_servidor_id = add("servidores", {"nome": interaction.guild.name, "discord_id": servidor_id})
+                if not novo_servidor_id:
+                    await interaction.followup.send("Erro: Não foi possível registrar o servidor.")
+                    return
+                servidor_id_db = novo_servidor_id
+            else:
+                servidor_id_db = servidor_existente[0][0]
 
             # Processa a lista de membros
             membros_lista = re.findall(r'<@!?(\d+)>', membros)
@@ -130,24 +181,11 @@ class ClaCog(app_commands.Group):
             for membro_id in membros_lista:
                 logger.info(f"Processando membro: {membro_id}")
                 
-                # Tenta obter o membro do cache do bot
-                membro = interaction.guild.get_member(int(membro_id))
-                
-                if not membro:
-                    logger.warning(f"Membro não encontrado no cache: {membro_id}")
-                    # Tenta buscar o membro da API do Discord
-                    try:
-                        membro = await interaction.guild.fetch_member(int(membro_id))
-                        logger.info(f"Membro buscado da API: {membro.name}")
-                    except discord.errors.NotFound:
-                        logger.error(f"Membro não encontrado na API: {membro_id}")
-                        continue
-
-                # Verifica se o membro já está em um clã
-                membro_em_cla = query("cla", "id", "members_cla @> ARRAY[(SELECT id FROM membros WHERE discord_id = %s)]", (membro_id,))
+                # Verifica se o membro já está em um clã no servidor atual
+                membro_em_cla = query("cla", "id", "members_cla @> ARRAY[(SELECT id FROM membros WHERE discord_id = %s)] AND servidor_id = %s", (membro_id, servidor_id_db))
                 if membro_em_cla:
                     membros_ja_em_cla.append(membro_id)
-                    logger.info(f"Membro {membro_id} já está em um clã")
+                    logger.info(f"Membro {membro_id} já está em um clã neste servidor")
                     continue
 
                 membro_query = query("membros", "id", "discord_id = %s", (membro_id,))
@@ -156,12 +194,16 @@ class ClaCog(app_commands.Group):
                     logger.info(f"Membro {membro_id} já cadastrado no banco de dados")
                 else:
                     try:
-                        novo_membro = add("membros", {"discord_id": membro_id, "nome": membro.name})
-                        if novo_membro:
-                            membros_ids.append(novo_membro[0])
-                            logger.info(f"Novo membro adicionado: {membro.name} ({membro_id})")
+                        membro = await interaction.guild.fetch_member(int(membro_id))
+                        if membro:
+                            novo_membro = add("membros", {"discord_id": membro_id, "nome": membro.name})
+                            if novo_membro:
+                                membros_ids.append(novo_membro[0])
+                                logger.info(f"Novo membro adicionado: {membro.name} ({membro_id})")
+                            else:
+                                logger.error(f"Falha ao adicionar novo membro: {membro_id}")
                         else:
-                            logger.error(f"Falha ao adicionar novo membro: {membro_id}")
+                            logger.error(f"Membro não encontrado: {membro_id}")
                     except Exception as e:
                         logger.error(f"Erro ao adicionar novo membro {membro_id}: {str(e)}")
                         continue
@@ -184,6 +226,8 @@ class ClaCog(app_commands.Group):
                 "name_cla": nome,
                 "tag_cla": tag,
                 "members_cla": membros_ids,
+                "servidor_id": servidor_id_db,
+                "ativo": True,
                 "ult_atualizacao": timestamp_atual,
                 "id_modificou": [membros_ids[0]]
             })
@@ -220,7 +264,7 @@ class ClaCog(app_commands.Group):
                 return
 
             # Desempacota os 8 valores retornados pela consulta
-            cla_id, lider_id, nome_cla, tag_cla, membros_atuais, ult_atualizacao, id_modificou, datas_modificacao = cla_info[0]
+            cla_id, lider_id, nome_cla, tag_cla, membros_atuais, servidor_id, ativo, ult_atualizacao, id_modificou = cla_info[0]
 
             # Processa a lista de membros
             novos_membros = re.findall(r'<@!?(\d+)>', membros)
@@ -281,7 +325,7 @@ class ClaCog(app_commands.Group):
             # Atualiza o clã no banco de dados
             timestamp_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             usuario_id = query("membros", "id", "discord_id = %s", (str(interaction.user.id),))[0][0]
-            edit("cla",                {
+            edit("cla", {
                 "members_cla": membros_atualizados,
                 "ult_atualizacao": timestamp_atual,
                 "id_modificou": id_modificou + [usuario_id]
@@ -304,34 +348,74 @@ class ClaCog(app_commands.Group):
             logger.error(f"Erro ao editar membros do clã: {str(e)}", exc_info=True)
             await interaction.followup.send("Ocorreu um erro ao editar os membros do clã. Por favor, tente novamente mais tarde.")
 
-    @app_commands.command(name="list", description="Lista todos os clãs cadastrados")
+    
+
+    @app_commands.command(name="list", description="Lista todos os clãs cadastrados neste servidor")
     @app_commands.checks.has_permissions(administrator=True)
     async def listar_clas(self, interaction: discord.Interaction):
-        logger.info(f"Solicitação de listagem de clãs pelo usuário {interaction.user.id}")
-        await interaction.response.defer(ephemeral=True)
+        logger.info(f"Solicitação de listagem de clãs pelo usuário {interaction.user.id} no servidor {interaction.guild.id}")
+        await interaction.response.defer(ephemeral=False)
 
         try:
-            clas = query("cla", "*")
-            if not clas:
-                await interaction.followup.send("Não há clãs cadastrados.")
+            # Obtém o discord_id do servidor
+            discord_id_servidor = interaction.guild.id
+
+            # Obtém o id do banco de dados do servidor em questão
+            servidor_query = query("servidores", "id", "discord_id = %s", (discord_id_servidor,))
+            if not servidor_query:
+                await interaction.followup.send("Este servidor não está cadastrado no banco de dados.")
                 return
 
-            mensagem = "**Lista de Clãs Cadastrados:**\n\n"
+            servidor_id_db = servidor_query[0][0]
+
+            # Busca os clãs do servidor atual, exceto o clã com id 1
+            clas = query("cla", "*", "servidor_id = %s AND id != 1", (servidor_id_db,))
+            if not clas:
+                await interaction.followup.send("Não há clãs cadastrados neste servidor.")
+                return
+
+            await interaction.followup.send("**Lista de Clãs Cadastrados neste Servidor:**")
+
             for cla in clas:
                 cla_info = self._formatar_cla_info(cla, interaction.guild)
-                mensagem += f"{cla_info}\n{'='*40}\n\n"
+                await interaction.channel.send(f"­\n{cla_info}\n{'='*40}")
+                await asyncio.sleep(1)  # Aguarda 1 segundo antes de enviar a próxima mensagem
 
-            # Divide a mensagem em partes menores se necessário
-            if len(mensagem) > 2000:
-                partes = [mensagem[i:i+2000] for i in range(0, len(mensagem), 2000)]
-                for parte in partes:
-                    await interaction.followup.send(parte)
-            else:
-                await interaction.followup.send(mensagem)
+            logger.info(f"Listagem de clãs concluída pelo usuário {interaction.user.id} no servidor {interaction.guild.id}")
 
         except Exception as e:
             logger.error(f"Erro ao listar clãs: {str(e)}", exc_info=True)
             await interaction.followup.send("Ocorreu um erro ao listar os clãs. Por favor, tente novamente mais tarde.")
+
+    def _formatar_cla_info(self, cla_info, guild):
+        cla_id, lider_id, nome_cla, tag_cla, membros_ids, ult_atualizacao, id_modificou, servidor_id, ativo = cla_info
+
+        lider_query = query("membros", "discord_id", "id = %s", (lider_id,))
+        lider_discord_id = lider_query[0][0] if lider_query else "Desconhecido"
+
+        membros_query = query("membros", "discord_id", f"id = ANY(ARRAY{membros_ids})")
+        membros_discord_ids = [membro[0] for membro in membros_query]
+
+        ultimo_modificador_id = id_modificou[-1] if id_modificou and isinstance(id_modificou, list) else None
+        ultimo_modificador_query = query("membros", "discord_id", "id = %s", (ultimo_modificador_id,)) if ultimo_modificador_id else None
+        ultimo_modificador_discord_id = ultimo_modificador_query[0][0] if ultimo_modificador_query else "Desconhecido"
+
+        mensagem = f"**Nome do Clã:** {nome_cla}\n"
+        mensagem += f"**TAG:** {tag_cla}\n"
+        mensagem += f"**Líder:** <@{lider_discord_id}>\n"
+        mensagem += f"**QTD Membros:** **{len(membros_discord_ids)}**\n"
+        mensagem += f"**Última Atualização:** {ult_atualizacao}\n"
+        mensagem += f"**Última Modificação por:** <@{ultimo_modificador_discord_id}>\n"
+        mensagem += "**Membros:**\n"
+
+        for discord_id in membros_discord_ids:
+            membro = guild.get_member(int(discord_id))
+            if membro:
+                mensagem += f"- {membro.mention}\n"
+            else:
+                mensagem += f"- <@{discord_id}>\n"
+
+        return mensagem
 
     @listar_clas.error
     async def listar_clas_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):

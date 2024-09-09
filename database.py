@@ -49,24 +49,24 @@ def query(tabela, colunas="*", condicao=None, params=None):
     """
     Realiza uma consulta na tabela especificada.
     """
-    query = f"SELECT {colunas} FROM {tabela}"  # Monta a query SELECT básica
+    query = f"SELECT {colunas} FROM {tabela}"
     if condicao:
-        query += f" WHERE {condicao}"  # Adiciona a cláusula WHERE se houver condição
+        query += f" WHERE {condicao}"
     logger.info(f"Executando consulta em {tabela}")
-    return executar_query(query, params)  # Executa a query
+    return executar_query(query, params)
 
 def add(tabela, dados):
     """
     Adiciona um novo registro à tabela especificada.
     """
-    colunas = ", ".join(dados.keys())  # Prepara a string de colunas
-    valores = ", ".join(["%s"] * len(dados))  # Prepara a string de placeholders para valores
-    query = f"INSERT INTO {tabela} ({colunas}) VALUES ({valores}) RETURNING id"  # Monta a query INSERT
+    colunas = ", ".join(dados.keys())
+    valores = ", ".join(["%s"] * len(dados))
+    query = f"INSERT INTO {tabela} ({colunas}) VALUES ({valores}) RETURNING id"
     logger.info(f"Adicionando novo registro em {tabela}")
-    resultado = executar_query(query, tuple(dados.values()))  # Executa a query
+    resultado = executar_query(query, tuple(dados.values()))
     if resultado:
         logger.info(f"Novo registro adicionado em {tabela} com ID: {resultado[0][0]}")
-        return resultado[0]  # Retorna o ID do registro inserido
+        return resultado[0]
     logger.warning(f"Falha ao adicionar novo registro em {tabela}")
     return None
 
@@ -74,10 +74,10 @@ def edit(tabela, dados, condicao, params):
     """
     Edita registros na tabela especificada que atendem à condição.
     """
-    set_clause = ", ".join([f"{coluna} = %s" for coluna in dados.keys()])  # Prepara a cláusula SET
-    query = f"UPDATE {tabela} SET {set_clause} WHERE {condicao}"  # Monta a query UPDATE
+    set_clause = ", ".join([f"{coluna} = %s" for coluna in dados.keys()])
+    query = f"UPDATE {tabela} SET {set_clause} WHERE {condicao}"
     logger.info(f"Editando registros em {tabela}")
-    resultado = executar_query(query, tuple(dados.values()) + params)  # Executa a query
+    resultado = executar_query(query, tuple(dados.values()) + params)
     logger.info(f"Registros atualizados em {tabela}")
     return resultado
 
